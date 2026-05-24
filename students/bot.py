@@ -106,13 +106,20 @@ def main():
 
     try:
         while True:
-            updates = get_updates(offset)
-            for update in updates:
-                offset = update["update_id"] + 1
-                if "message" not in update or "text" not in update["message"]:
+            try:
+                updates = get_updates(offset)
+                if not updates:
+                    time.sleep(2)
                     continue
-                if not handle_message(update):
-                    print("Бот зупинено (gin)")
-                    return
+                for update in updates:
+                    offset = update["update_id"] + 1
+                    if "message" not in update or "text" not in update["message"]:
+                        continue
+                    if not handle_message(update):
+                        print("Бот зупинено (gin)")
+                        return
+            except Exception as exc:
+                print(f"Помилка циклу ({exc}), продовжую через 5s...")
+                time.sleep(5)
     except KeyboardInterrupt:
         print("\nБот зупинено")
