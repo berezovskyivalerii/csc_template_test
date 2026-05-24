@@ -18,86 +18,101 @@ bot_key = require_token("TELEGRAM_BOT_TOKEN")
 URL = get_token("TELEGRAM_API_URL", "https://api.telegram.org/bot")
 url = f"{URL}{bot_key}/"
 
+# PA іноді підставляє proxy через env — для Telegram краще без нього
+session = requests.Session()
+session.trust_env = False
 
-def last_update(request):
-    response = requests.get(request + "getUpdates")
-    response = response.json()
-    print(response)
-    results = response["result"]
-    if not results:
-        return None
-    return results[-1]
+
+def _api(method, **params):
+    for attempt in range(5):
+        try:
+            if params:
+                return session.post(url + method, data=params, timeout=35)
+            return session.get(url + method, timeout=35)
+        except requests.RequestException as exc:
+            wait = min(2 ** attempt, 30)
+            print(f"Telegram API помилка ({exc}), повтор через {wait}s...")
+            time.sleep(wait)
+    return None
+
+
+def get_updates(offset=None):
+    params = {"timeout": 30}
+    if offset is not None:
+        params["offset"] = offset
+    response = _api("getUpdates", **params)
+    if response is None or not response.ok:
+        return []
+    data = response.json()
+    if not data.get("ok"):
+        return []
+    return data.get("result", [])
 
 
 def get_chat_id(update):
-    chat_id = update["message"]["chat"]["id"]
-    return chat_id
+    return update["message"]["chat"]["id"]
 
 
 def get_message_text(update):
-    message_text = update["message"]["text"]
-    return message_text
+    return update["message"]["text"]
 
 
 def send_message(chat, text):
-    params = {"chat_id": chat, "text": text}
-    response = requests.post(url + "sendMessage", data=params)
-    return response
+    _api("sendMessage", chat_id=chat, text=text)
+
+
+def handle_message(update):
+    text = get_message_text(update).lower()
+    chat_id = get_chat_id(update)
+
+    if text in ("hi", "hello", "hey", "/start"):
+        send_message(chat_id, 'Greetings! Type "Dice" to roll the dice!')
+    elif text == "csc31":
+        send_message(chat_id, "Python")
+    elif text == "gin":
+        send_message(chat_id, "Finish")
+        return False
+    elif text == "python":
+        send_message(chat_id, "version 3.14")
+    elif text == "name":
+        send_message(chat_id, "CSC31")
+    elif "weather" in text:
+        city = text.replace("weather ", "")
+        send_message(chat_id, get_weather(city))
+    elif text == "dice":
+        _1 = random.randint(1, 6)
+        _2 = random.randint(1, 6)
+        send_message(
+            chat_id,
+            f"You have {_1} and {_2}!\nYour result is {_1 + _2}!",
+        )
+    else:
+        result = calculate_expression(get_message_text(update))
+        if result is not None:
+            send_message(chat_id, result)
+        else:
+            send_message(chat_id, "Sorry, I don't understand you :(")
+    return True
 
 
 def main():
-    try:
-        update_id = None
-        while True:
-            time.sleep(1)
-            update = last_update(url)
-            if update is None:
-                continue
-            if update_id is None:
-                update_id = update["update_id"]
-            if update_id == update["update_id"]:
-                text = get_message_text(update).lower()
-                if text in ("hi", "hello", "hey"):
-                    send_message(
-                        get_chat_id(update),
-                        'Greetings! Type "Dice" to roll the dice!',
-                    )
-                elif text == "csc31":
-                    send_message(get_chat_id(update), "Python")
-                elif text == "gin":
-                    send_message(get_chat_id(update), "Finish")
-                    break
-                elif text == "python":
-                    send_message(get_chat_id(update), "version 3.14")
-                elif text == "name":
-                    send_message(get_chat_id(update), "CSC31")
-                elif "weather" in text:
-                    city = text.replace("weather ", "")
-                    weather = get_weather(city)
-                    send_message(get_chat_id(update), weather)
-                elif text == "dice":
-                    _1 = random.randint(1, 6)
-                    _2 = random.randint(1, 6)
-                    send_message(
-                        get_chat_id(update),
-                        "You have "
-                        + str(_1)
-                        + " and "
-                        + str(_2)
-                        + "!\nYour result is "
-                        + str(_1 + _2)
-                        + "!",
-                    )
-                else:
-                    result = calculate_expression(get_message_text(update))
-                    if result is not None:
-                        send_message(get_chat_id(update), result)
-                    else:
-                        send_message(
-                            get_chat_id(update),
-                            "Sorry, I don't understand you :(",
-                        )
+    print("Бот запущено...")
+    # пропускаємо старі повідомлення в черзі
+    offset = None
+    pending = get_updates()
+    if pending:
+        offset = pending[-1]["update_id"] + 1
+        print(f"Пропущено {len(pending)} старих повідомлень")
 
-                update_id += 1
+    try:
+        while True:
+            updates = get_updates(offset)
+            for update in updates:
+                offset = update["update_id"] + 1
+                if "message" not in update or "text" not in update["message"]:
+                    continue
+                if not handle_message(update):
+                    print("Бот зупинено (gin)")
+                    return
     except KeyboardInterrupt:
         print("\nБот зупинено")
