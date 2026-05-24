@@ -18,9 +18,7 @@ bot_key = require_token("TELEGRAM_BOT_TOKEN")
 URL = get_token("TELEGRAM_API_URL", "https://api.telegram.org/bot")
 url = f"{URL}{bot_key}/"
 
-# PA іноді підставляє proxy через env — для Telegram краще без нього
 session = requests.Session()
-session.trust_env = False
 
 
 def _api(method, **params):
