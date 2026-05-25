@@ -64,7 +64,7 @@ def handle_message(update):
     chat_id = get_chat_id(update)
 
     if text in ("hi", "hello", "hey", "/start"):
-        send_message(chat_id, 'Greetings! Type "Dice" to roll the dice!')
+        send_message(chat_id, 'Greetings, I'm Valerii! Type "Dice" to roll the dice!')
     elif text == "csc31":
         send_message(chat_id, "Python")
     elif text == "gin":
